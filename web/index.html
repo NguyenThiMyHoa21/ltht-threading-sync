@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Threading &amp; Synchronization Lab v3.0 — Linux Systems</title>
+<style>
+  :root {
+    --bg: #070d18; --bg2: #0d1628; --card: #111c33; --card-border: #1e2e4f;
+    --text: #e2e8f0; --muted: #8b9bb8; --cyan: #22d3ee; --blue: #3b82f6;
+    --green: #10b981; --amber: #f59e0b; --red: #ef4444; --purple: #a855f7;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: radial-gradient(circle at top right, #112242 0%, var(--bg) 55%); color: var(--text); font-family: var(--sans); min-height: 100vh; line-height: 1.45; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 16px 20px 34px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; padding: 15px 18px; border-radius: 14px; background: linear-gradient(135deg, rgba(17,28,51,0.95), rgba(13,22,40,0.92)); border: 1px solid var(--card-border); box-shadow: 0 12px 30px rgba(0,0,0,0.35); margin-bottom: 14px; }
+  .brand h1 { font-size: 1.22rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+  .brand .sub { font-size: 0.8rem; color: var(--muted); margin-top: 3px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 700; }
+  .pill.run { background: rgba(16,185,129,0.14); color: var(--green); border: 1px solid rgba(16,185,129,0.4); }
+  .pill.idle { background: rgba(139,155,184,0.12); color: var(--muted); border: 1px solid rgba(139,155,184,0.25); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .pill.run .dot { animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1);} 50%{opacity:0.4;transform:scale(0.75);} }
+  .hdr-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .timer-box { font-family: var(--mono); font-size: 0.85rem; color: var(--cyan); padding: 6px 12px; border-radius: 8px; background: var(--bg); border: 1px solid var(--card-border); }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .tab { cursor: pointer; border: 1px solid var(--card-border); background: var(--bg2); color: var(--muted); padding: 8px 14px; border-radius: 10px; font-size: 0.84rem; font-weight: 600; transition: all 0.15s; }
+  .tab:hover { color: var(--text); border-color: #355084; }
+  .tab.active { color: #06101f; background: linear-gradient(135deg, var(--cyan), #38bdf8); border-color: transparent; }
+  .main-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 1040px) { .main-grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--card-border); border-radius: 14px; padding: 15px 17px; box-shadow: 0 8px 24px rgba(0,0,0,0.28); margin-bottom: 14px; }
+  .card-title { font-size: 0.94rem; font-weight: 700; margin-bottom: 11px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .muted { color: var(--muted); font-size: 0.8rem; }
+  .controls { display: flex; flex-wrap: wrap; gap: 9px; align-items: end; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--card-border); }
+  .field { display: flex; flex-direction: column; gap: 3px; }
+  .field label { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+  .field input, .field select { background: var(--bg); color: var(--text); border: 1px solid var(--card-border); border-radius: 8px; padding: 6px 9px; font-size: 0.84rem; font-family: var(--mono); min-width: 78px; }
+  button.btn { cursor: pointer; border: none; border-radius: 8px; padding: 7px 14px; font-size: 0.83rem; font-weight: 700; }
+  .btn-primary { background: linear-gradient(135deg, var(--green), #059669); color: #03150e; }
+  .btn-cyan { background: linear-gradient(135deg, var(--cyan), var(--blue)); color: #051124; }
+  .btn-amber { background: linear-gradient(135deg, var(--amber), #d97706); color: #190d02; }
+  .btn-danger { background: rgba(239,68,68,0.16); color: var(--red); border: 1px solid rgba(239,68,68,0.4) !important; }
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-bottom: 12px; }
+  @media (max-width: 640px) { .stats-row { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background: var(--bg2); border: 1px solid var(--card-border); border-radius: 10px; padding: 9px 11px; }
+  .stat .k { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+  .stat .v { font-family: var(--mono); font-size: 1.06rem; font-weight: 700; margin-top: 2px; color: var(--cyan); }
+  .pbar-wrap { background: var(--bg); border: 1px solid var(--card-border); border-radius: 999px; height: 12px; overflow: hidden; margin-bottom: 12px; }
+  .pbar { height: 100%; background: linear-gradient(90deg, var(--cyan), var(--green)); width: 0%; transition: width 0.12s linear; }
+  .workers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 9px; }
+  .wcard { background: var(--bg2); border: 1px solid var(--card-border); border-radius: 10px; padding: 9px 11px; }
+  .wcard.st-1 { border-color: rgba(16,185,129,0.65); background: rgba(16,185,129,0.06); }
+  .wcard.st-0 { border-color: rgba(245,158,11,0.45); }
+  .wcard .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+  .badge { font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 6px; font-family: var(--mono); }
+  .b-run { background: rgba(16,185,129,0.2); color: var(--green); }
+  .b-wait { background: rgba(245,158,11,0.2); color: var(--amber); }
+  .b-stop { background: rgba(139,155,184,0.18); color: var(--muted); }
+  .b-err { background: rgba(239,68,68,0.2); color: var(--red); }
+  .b-purp { background: rgba(168,85,247,0.2); color: var(--purple); }
+  .b-cyan { background: rgba(34,211,238,0.2); color: var(--cyan); }
+  .slots { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .slot { min-width: 48px; height: 34px; padding: 0 7px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 0.74rem; font-weight: 700; border: 1px dashed var(--card-border); color: var(--muted); background: var(--bg); }
+  .slot.filled { border-style: solid; border-color: rgba(34,211,238,0.55); background: rgba(34,211,238,0.14); color: var(--cyan); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th, td { padding: 8px 9px; border-bottom: 1px solid var(--card-border); text-align: left; }
+  th { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; }
+  td.mono { font-family: var(--mono); }
+  .log-box { background: #060a13; border: 1px solid var(--card-border); border-radius: 10px; height: 540px; overflow-y: auto; font-family: var(--mono); font-size: 0.75rem; padding: 8px; }
+  .log-line { display: grid; grid-template-columns: 58px 56px 86px 1fr; gap: 6px; padding: 4px 6px; border-bottom: 1px solid rgba(30,46,79,0.45); align-items: baseline; }
+  .ev-t { color: var(--muted); }
+  .ev-tag { font-weight: 700; text-align: center; border-radius: 4px; padding: 1px 4px; font-size: 0.67rem; }
+  .ev-MUTEX { background: rgba(245,158,11,0.18); color: var(--amber); }
+  .ev-COND { background: rgba(168,85,247,0.18); color: var(--purple); }
+  .ev-SEM { background: rgba(34,211,238,0.18); color: var(--cyan); }
+  .ev-RWLOCK { background: rgba(16,185,129,0.18); color: var(--green); }
+  .ev-ATOMIC { background: rgba(59,130,246,0.22); color: #60a5fa; }
+  .ev-QUEUE { background: rgba(56,189,248,0.16); color: #7dd3fc; }
+  .ev-POOL { background: rgba(148,163,184,0.16); color: #cbd5e1; }
+  .hidden { display: none !important; }
+  .bench-bar { height: 22px; border-radius: 8px; background: var(--bg); border: 1px solid var(--card-border); overflow: hidden; margin: 5px 0 10px; }
+  .bench-fill { height: 100%; display: flex; align-items: center; padding-left: 10px; font-family: var(--mono); font-size: 0.76rem; font-weight: 700; transition: width 0.2s; white-space: nowrap; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 720px) { .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>
+        <span>&#9881;&#65039; Threading &amp; Synchronization Lab v3.0</span>
+        <span id="runPill" class="pill idle"><span class="dot"></span><span id="runText">IDLE</span></span>
+      </h1>
+      <div class="sub">Lập trình hệ thống (POSIX C11) &mdash; File I/O (`opendir`/`open`/`read`), `pthread`, `mutex`, `cond`, `sem_t`, `rwlock`, `barrier`, `timedlock`, `getrusage`</div>
+    </div>
+    <div class="hdr-right">
+      <div class="timer-box" id="elapsedBox">0.00 s | ctx_sw: 0</div>
+      <button class="btn btn-danger" onclick="apiPost('/api/stop')">Dừng</button>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="pool" onclick="switchTab('pool')">1. Thread Pool &amp; File Scanner</button>
+    <button class="tab" data-tab="bench" onclick="switchTab('bench')">2. Benchmark &amp; Barrier</button>
+    <button class="tab" data-tab="race" onclick="switchTab('race')">3. Sync Profiler &amp; KV Cache</button>
+    <button class="tab" data-tab="pc" onclick="switchTab('pc')">4. Log Stream (Semaphore)</button>
+    <button class="tab" data-tab="sync" onclick="switchTab('sync')">5. RWLock, Deadlock &amp; Triết gia</button>
+  </div>
+
+  <div class="main-grid">
+    <div id="leftPane">
+      <!-- TAB 1 -->
+      <section id="tab-pool" class="card">
+        <div class="card-title">
+          <span>Thread Pool + Quét File Hệ Thống Thật (POSIX <code>opendir/open/read</code> + CRC32)</span>
+          <span class="muted" id="pCrcBadge">CRC32: -</span>
+        </div>
+        <div class="controls">
+          <div class="field"><label>Workers</label><input id="pWorkers" type="number" min="1" max="16" value="4"></div>
+          <div class="field"><label>Max Tasks/Files</label><input id="pTasks" type="number" min="1" max="600" value="200"></div>
+          <div class="field"><label>Queue Cap</label><input id="pQcap" type="number" min="2" max="128" value="16"></div>
+          <div class="field"><label>Workload</label>
+            <select id="pType">
+              <option value="3" selected>POSIX File Scan (/usr/include)</option>
+              <option value="1">CPU Prime Count</option>
+              <option value="2">CPU FNV-1a Hash</option>
+              <option value="0">Simulated I/O</option>
+            </select>
+          </div>
+          <div class="field"><label>Thư mục</label><input id="pDir" type="text" value="/usr/include" style="min-width:120px;"></div>
+          <div class="field"><label>Từ khóa</label><input id="pPat" type="text" value="define" style="min-width:85px;"></div>
+          <button class="btn btn-primary" onclick="startPool()">Chạy</button>
+        </div>
+        <div class="stats-row">
+          <div class="stat"><div class="k">Tiến độ</div><div class="v" id="pProg">0 / 0</div></div>
+          <div class="stat"><div class="k">Dữ liệu đọc</div><div class="v" id="pBytes">0 KB</div></div>
+          <div class="stat"><div class="k">Dòng / Từ khóa</div><div class="v" id="pHits">0 / 0</div></div>
+          <div class="stat"><div class="k">Rate &amp; Queue</div><div class="v" id="pRate">0 /s</div></div>
+        </div>
+        <div class="pbar-wrap"><div class="pbar" id="pBar"></div></div>
+        <div class="muted" style="margin-bottom:4px;">Task Queue FIFO (Bounded Circular Buffer):</div>
+        <div id="pQueueSlots" class="slots" style="margin-bottom:12px;"><span class="muted">-</span></div>
+        <div id="pWorkersGrid" class="workers-grid"></div>
+      </section>
+
+      <!-- TAB 2 -->
+      <section id="tab-bench" class="hidden">
+        <div class="card">
+          <div class="card-title">
+            <span>Benchmark 1-Thread vs Multi-Thread (Kiểm chứng Speedup &amp; Checksum)</span>
+            <span id="bMatchBadge" class="badge b-stop">-</span>
+          </div>
+          <div class="controls">
+            <div class="field"><label>Workers</label><input id="bWorkers" type="number" min="2" max="16" value="4"></div>
+            <div class="field"><label>Số file / tasks</label><input id="bTasks" type="number" min="4" max="600" value="300"></div>
+            <div class="field"><label>Bài test</label>
+              <select id="bKind">
+                <option value="1" selected>Quét thật /usr/include (open/read/CRC32)</option>
+                <option value="0">CPU Prime Count (450k)</option>
+              </select>
+            </div>
+            <button class="btn btn-cyan" onclick="startBench()">Chạy Benchmark</button>
+          </div>
+          <div class="stats-row">
+            <div class="stat"><div class="k">1 Thread</div><div class="v" id="bSingleMs">-</div></div>
+            <div class="stat"><div class="k">N Threads</div><div class="v" id="bMultiMs">-</div></div>
+            <div class="stat"><div class="k">Speedup</div><div class="v" id="bSpeedup" style="color:var(--green)">-</div></div>
+            <div class="stat"><div class="k">CtxSw (1T / MT)</div><div class="v" id="bCtx" style="font-size:0.9rem">-</div></div>
+          </div>
+          <div class="muted">1 Thread:</div>
+          <div class="bench-bar"><div class="bench-fill" id="bBar1" style="width:0%;background:var(--amber);color:#140e02;"></div></div>
+          <div class="muted">Multi-Thread Pool:</div>
+          <div class="bench-bar"><div class="bench-fill" id="bBar2" style="width:0%;background:var(--green);color:#03150e;"></div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <span>Multi-Stage Barrier Pipeline (<code>pthread_barrier_t</code>)</span>
+            <span class="badge b-purp" id="barPhase">Phase 0</span>
+          </div>
+          <div class="controls">
+            <div class="field"><label>Stage Workers (2-8)</label><input id="barW" type="number" min="2" max="8" value="4"></div>
+            <button class="btn btn-primary" onclick="startBarrier()">Chạy 3-Stage Barrier</button>
+            <span class="muted" id="barChk"></span>
+          </div>
+          <div id="barGrid" class="workers-grid"></div>
+        </div>
+      </section>
+
+      <!-- TAB 3 -->
+      <section id="tab-race" class="hidden">
+        <div class="card">
+          <div class="card-title">
+            <span>OS Synchronization Profiler (<code>getrusage</code> + Context Switches)</span>
+            <span class="muted">Race vs Mutex vs Spinlock vs C11 Atomic</span>
+          </div>
+          <div class="controls">
+            <div class="field"><label>Threads</label><input id="rThreads" type="number" min="2" max="16" value="4"></div>
+            <div class="field"><label>Loops/Thread</label><input id="rLoops" type="number" min="50000" max="5000000" step="100000" value="1500000"></div>
+            <button class="btn btn-primary" onclick="startRace()">Chạy Profiler</button>
+          </div>
+          <table>
+            <thead><tr><th>Cơ chế</th><th>Kết quả</th><th>Lost</th><th>Time</th><th>User / Sys ms</th><th>CtxSw (nvcsw)</th></tr></thead>
+            <tbody id="rTable"><tr><td colspan="6" class="muted">Bấm "Chạy Profiler"...</td></tr></tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <span>Concurrent Hash KV Cache: Global Mutex vs RWLock vs 16-Bucket Lock Striping</span>
+          </div>
+          <div class="controls">
+            <div class="field"><label>Threads</label><input id="cThreads" type="number" min="2" max="16" value="4"></div>
+            <div class="field"><label>Ops/Thread</label><input id="cOps" type="number" min="20000" max="1000000" step="50000" value="250000"></div>
+            <div class="field"><label>% Read</label><input id="cRead" type="number" min="10" max="99" value="85"></div>
+            <button class="btn btn-cyan" onclick="startCache()">Benchmark KV Cache</button>
+          </div>
+          <table>
+            <thead><tr><th>Chiến lược khóa</th><th>Throughput</th><th>Tổng thời gian</th><th>CtxSw (nvcsw)</th></tr></thead>
+            <tbody id="cTable"><tr><td colspan="4" class="muted">Bấm "Benchmark KV Cache"...</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- TAB 4 -->
+      <section id="tab-pc" class="card hidden">
+        <div class="card-title">
+          <span>Log Stream Pipeline: Producer&ndash;Consumer trên <code>/var/log/dpkg.log</code></span>
+          <span class="badge b-cyan" id="pcSrcBadge">Semaphore + Mutex</span>
+        </div>
+        <div class="controls">
+          <div class="field"><label>Producers</label><input id="pcP" type="number" min="1" max="8" value="2"></div>
+          <div class="field"><label>Consumers</label><input id="pcC" type="number" min="1" max="8" value="3"></div>
+          <div class="field"><label>Buffer</label><input id="pcB" type="number" min="2" max="16" value="8"></div>
+          <div class="field"><label>Log Lines</label><input id="pcN" type="number" min="4" max="60" value="24"></div>
+          <button class="btn btn-cyan" onclick="startPC()">Stream Logs</button>
+        </div>
+        <div class="stats-row">
+          <div class="stat"><div class="k">Produced / Consumed</div><div class="v" id="pcProg">0 / 0</div></div>
+          <div class="stat"><div class="k">sem_empty / sem_full</div><div class="v" id="pcSems">0 / 0</div></div>
+          <div class="stat"><div class="k">install / configure</div><div class="v" id="pcPkg1">0 / 0</div></div>
+          <div class="stat"><div class="k">status / other</div><div class="v" id="pcPkg2">0 / 0</div></div>
+        </div>
+        <div class="muted">Bounded Ring Buffer Slots:</div>
+        <div id="pcSlots" class="slots" style="margin-bottom:12px;"></div>
+        <div class="two-col">
+          <div><div class="muted" style="margin-bottom:5px;">Producers:</div><div id="pcProds" class="workers-grid"></div></div>
+          <div><div class="muted" style="margin-bottom:5px;">Consumers:</div><div id="pcConss" class="workers-grid"></div></div>
+        </div>
+      </section>
+
+      <!-- TAB 5 -->
+      <section id="tab-sync" class="hidden">
+        <div class="card">
+          <div class="card-title">
+            <span>Phát hiện &amp; Thoát Deadlock AB-BA (<code>pthread_mutex_timedlock</code> vs Ordered Lock)</span>
+          </div>
+          <div class="controls">
+            <div class="field"><label>Giao dịch/Thread</label><input id="dlRnd" type="number" min="2" max="15" value="5"></div>
+            <button class="btn btn-amber" onclick="startDeadlock()">Test Deadlock &amp; Recovery</button>
+          </div>
+          <div class="stats-row">
+            <div class="stat"><div class="k">TimedLock ETIMEDOUT</div><div class="v" id="dlTo" style="color:var(--amber)">0</div></div>
+            <div class="stat"><div class="k">Phase 1 Recovered</div><div class="v" id="dlP1">0</div></div>
+            <div class="stat"><div class="k">Ordered Timeouts</div><div class="v" id="dlOTo" style="color:var(--green)">0</div></div>
+            <div class="stat"><div class="k">Phase 2 Time</div><div class="v" id="dlP2">-</div></div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <div class="card-title"><span>Readers &ndash; Writers (<code>rwlock</code>)</span><span class="badge b-run" id="rwVer">v0</span></div>
+            <div class="controls">
+              <div class="field"><label>R</label><input id="rwR" type="number" min="1" max="8" value="4" style="min-width:54px;"></div>
+              <div class="field"><label>W</label><input id="rwW" type="number" min="1" max="4" value="2" style="min-width:54px;"></div>
+              <div class="field"><label>Rnd</label><input id="rwN" type="number" min="2" max="12" value="5" style="min-width:54px;"></div>
+              <button class="btn btn-primary" onclick="startRW()">Chạy</button>
+            </div>
+            <div class="muted" id="rwStats" style="margin-bottom:8px;">Active R:0 W:0</div>
+            <div id="rwActors" class="workers-grid"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title"><span>5 Triết gia (Ordered + Butler)</span><span class="badge b-purp" id="philMeals">0</span></div>
+            <div class="controls">
+              <div class="field"><label>Meals</label><input id="phM" type="number" min="1" max="10" value="4" style="min-width:65px;"></div>
+              <button class="btn btn-cyan" onclick="startPhil()">Chạy</button>
+            </div>
+            <svg id="philSvg" viewBox="0 0 280 230" style="width:100%;max-width:290px;display:block;margin:0 auto;"></svg>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="card-title">
+          <span>Live Synchronization Event Trace</span>
+          <span class="muted" id="evTotal">0 events</span>
+        </div>
+        <div class="log-box" id="logBox"><div class="muted" style="padding:12px;">Chờ sự kiện đồng bộ...</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+function switchTab(t) {
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  ['pool','bench','race','pc','sync'].forEach(k => $('tab-' + k).classList.toggle('hidden', k !== t));
+}
+async function apiPost(url) { try { await fetch(url, { method: 'POST' }); } catch (e) {} poll(); }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function startPool() {
+  const dir = encodeURIComponent($('pDir').value || '/usr/include');
+  const pat = encodeURIComponent($('pPat').value || 'pthread');
+  apiPost(`/api/pool/start?workers=${$('pWorkers').value}&tasks=${$('pTasks').value}&workload=${$('pType').value}&qcap=${$('pQcap').value}&dir=${dir}&pattern=${pat}`);
+}
+function startBench() { apiPost(`/api/bench/start?workers=${$('bWorkers').value}&tasks=${$('bTasks').value}&kind=${$('bKind').value}`); }
+function startBarrier() { apiPost(`/api/barrier/start?workers=${$('barW').value}`); }
+function startRace() { apiPost(`/api/race/start?threads=${$('rThreads').value}&loops=${$('rLoops').value}`); }
+function startCache() { apiPost(`/api/cache/start?threads=${$('cThreads').value}&ops=${$('cOps').value}&read_pct=${$('cRead').value}`); }
+function startPC() { apiPost(`/api/pc/start?producers=${$('pcP').value}&consumers=${$('pcC').value}&buf=${$('pcB').value}&items=${$('pcN').value}`); }
+function startRW() { apiPost(`/api/rw/start?readers=${$('rwR').value}&writers=${$('rwW').value}&rounds=${$('rwN').value}`); }
+function startDeadlock() { apiPost(`/api/deadlock/start?rounds=${$('dlRnd').value}`); }
+function startPhil() { apiPost(`/api/phil/start?meals=${$('phM').value}`); }
+
+function renderPool(p) {
+  const pct = p.total_tasks > 0 ? Math.min(100, Math.round(p.completed * 100 / p.total_tasks)) : 0;
+  $('pProg').textContent = `${p.completed} / ${p.total_tasks}`;
+  $('pBytes').textContent = p.total_bytes > 1048576 ? (p.total_bytes/1048576).toFixed(2)+' MB' : Math.round(p.total_bytes/1024)+' KB';
+  $('pHits').textContent = `${p.total_lines} / ${p.total_hits}`;
+  $('pRate').textContent = `${(p.throughput||0).toFixed(0)}/s (q:${p.queued})`;
+  $('pCrcBadge').textContent = `CRC32: 0x${(p.combined_crc>>>0).toString(16).padStart(8,'0')}`;
+  $('pBar').style.width = pct + '%';
+  $('pQueueSlots').innerHTML = (p.queue_ids && p.queue_ids.length)
+    ? p.queue_ids.map(id => `<div class="slot filled">#${id}</div>`).join('')
+    : '<span class="muted">Queue trống</span>';
+  const st = ['WAITING', 'RUNNING', 'STOPPED'], cl = ['b-wait', 'b-run', 'b-stop'];
+  $('pWorkersGrid').innerHTML = (p.worker_states || []).map(w => `
+    <div class="wcard st-${w.status}">
+      <div class="top"><b>Worker #${w.id}</b><span class="badge ${cl[w.status]}">${st[w.status]}</span></div>
+      <div class="muted" style="font-family:var(--mono);font-size:0.72rem;">TID:${w.tid||'-'} | ${esc(w.label||'-')}</div>
+      <div class="muted" style="font-size:0.73rem;">Done: ${w.completed_tasks} | ${w.busy_ms.toFixed(0)}ms</div>
+    </div>`).join('');
+}
+
+function renderBench(b) {
+  $('bSingleMs').textContent = b.single_ms > 0 ? `${b.single_ms.toFixed(1)} ms` : '-';
+  $('bMultiMs').textContent = b.multi_ms > 0 ? `${b.multi_ms.toFixed(1)} ms` : '-';
+  $('bSpeedup').textContent = b.phase === 3 ? `${b.speedup.toFixed(2)}x` : '-';
+  $('bCtx').textContent = b.phase === 3 ? `${b.s_nvcsw} / ${b.m_nvcsw}` : '-';
+  const mb = $('bMatchBadge');
+  mb.className = 'badge ' + (b.phase===3 ? (b.match?'b-run':'b-err') : 'b-stop');
+  mb.textContent = b.phase === 3 ? (b.match ? 'Checksum MATCH' : 'MISMATCH') : 'Ready';
+  const mx = Math.max(b.single_ms, b.multi_ms, 1);
+  $('bBar1').style.width = b.single_ms > 0 ? Math.max(8, Math.round(b.single_ms*100/mx))+'%' : '0%';
+  $('bBar1').textContent = b.single_ms > 0 ? `${b.single_ms.toFixed(1)}ms (${b.single_done}/${b.tasks})` : '';
+  $('bBar2').style.width = b.multi_ms > 0 ? Math.max(8, Math.round(b.multi_ms*100/mx))+'%' : '0%';
+  $('bBar2').textContent = b.multi_ms > 0 ? `${b.multi_ms.toFixed(1)}ms (${b.multi_done}/${b.tasks})` : '';
+}
+
+function renderBarrier(b) {
+  $('barPhase').textContent = b.phase === 4 ? 'ALL DONE' : `Stage ${b.phase}`;
+  $('barChk').textContent = b.phase === 4 ? `Final Checksum: 0x${b.checksum.toString(16)}` : '';
+  $('barGrid').innerHTML = (b.list || []).map(w => `
+    <div class="wcard st-${w.stage < 4 ? 1 : 0}">
+      <div class="top"><b>Thread #${w.id}</b><span class="badge ${w.stage===4?'b-run':'b-purp'}">${w.stage===4?'DONE':'Stage '+w.stage}</span></div>
+      <div class="muted">Barriers passed: ${w.hits} / 3</div>
+    </div>`).join('');
+}
+
+function renderRace(r) {
+  if (!r.items || !r.items.length) return;
+  $('rTable').innerHTML = r.items.map(it => {
+    const ok = it.done && it.lost === 0;
+    const badge = it.running ? '<span class="badge b-wait">RUN</span>' : (it.done ? (ok ? '<span class="badge b-run">0</span>' : `<span class="badge b-err">-${it.lost.toLocaleString()}</span>`) : '-');
+    return `<tr><td><b>${esc(it.name)}</b></td><td class="mono">${it.done?it.actual.toLocaleString():'...'}</td><td>${badge}</td><td class="mono">${it.done?it.elapsed_ms.toFixed(1)+'ms':'-'}</td><td class="mono">${it.done?it.user_ms.toFixed(0)+' / '+it.sys_ms.toFixed(0):'-'}</td><td class="mono">${it.done?it.nvcsw:'-'}</td></tr>`;
+  }).join('');
+}
+
+function renderCache(c) {
+  if (!c.items || !c.items.length) return;
+  $('cTable').innerHTML = c.items.map(it => `<tr><td><b>${esc(it.name)}</b></td><td class="mono" style="color:var(--green)">${it.done?it.mops.toFixed(2)+' M ops/s':'...'}</td><td class="mono">${it.done?it.elapsed_ms.toFixed(1)+' ms':'-'}</td><td class="mono">${it.done?it.nvcsw:'-'}</td></tr>`).join('');
+}
+
+function renderPC(pc) {
+  $('pcProg').textContent = `${pc.produced} / ${pc.consumed} (${pc.total_items})`;
+  $('pcSems').textContent = `${pc.sem_empty} / ${pc.sem_full}`;
+  $('pcPkg1').textContent = `${pc.cnt_install} / ${pc.cnt_configure}`;
+  $('pcPkg2').textContent = `${pc.cnt_status} / ${pc.cnt_other}`;
+  $('pcSrcBadge').textContent = pc.real_log ? '/var/log/dpkg.log' : 'Synthetic Stream';
+  const tags = ['', 'inst', 'conf', 'stat', 'upg'];
+  $('pcSlots').innerHTML = (pc.slots || []).map((s, i) =>
+    `<div class="slot ${s.id>0?'filled':''}">${s.id>0 ? '#'+s.id+' '+tags[s.tag] : 'slot '+i}</div>`).join('');
+  const st = ['IDLE','WAIT','WORK','DONE'], cl = ['b-stop','b-wait','b-run','b-stop'];
+  $('pcProds').innerHTML = (pc.prod||[]).map(p => `<div class="wcard st-${p.state===2?1:0}"><div class="top"><b>Prod #${p.id}</b><span class="badge ${cl[p.state]}">${st[p.state]}</span></div><div class="muted">Log #${p.item||'-'}</div></div>`).join('');
+  $('pcConss').innerHTML = (pc.cons||[]).map(c => `<div class="wcard st-${c.state===2?1:0}"><div class="top"><b>Cons #${c.id}</b><span class="badge ${cl[c.state]}">${st[c.state]}</span></div><div class="muted">Log #${c.item||'-'}</div></div>`).join('');
+}
+
+function renderDeadlock(d) {
+  $('dlTo').textContent = d.t_timeouts;
+  $('dlP1').textContent = `${d.t_done} (${d.t_ms > 0 ? d.t_ms.toFixed(0)+'ms' : '...'})`;
+  $('dlOTo').textContent = d.o_timeouts;
+  $('dlP2').textContent = d.o_ms > 0 ? `${d.o_done} in ${d.o_ms.toFixed(0)}ms` : (d.phase===2?'Running':'-');
+}
+
+function renderRW(rw) {
+  $('rwVer').textContent = `v${rw.version} = ${rw.value}`;
+  $('rwStats').textContent = `Active R:${rw.active_readers} W:${rw.active_writers} | Total R:${rw.total_reads} W:${rw.total_writes}`;
+  const rs = ['IDLE','WAIT','READ','DONE'], ws = ['IDLE','WAIT','WRITE','DONE'];
+  $('rwActors').innerHTML = (rw.reader_list||[]).map(r=>`<div class="wcard st-${r.state===2?1:0}"><div class="top"><b>R#${r.id}</b><span class="badge ${r.state===2?'b-run':'b-stop'}">${rs[r.state]}</span></div><div class="muted">${r.count}</div></div>`)
+    .concat((rw.writer_list||[]).map(w=>`<div class="wcard st-${w.state===2?1:0}"><div class="top"><b>W#${w.id}</b><span class="badge ${w.state===2?'b-err':'b-stop'}">${ws[w.state]}</span></div><div class="muted">${w.count}</div></div>`)).join('');
+}
+
+function renderPhil(ph) {
+  $('philMeals').textContent = `${ph.total_meals}`;
+  const cx=140, cy=114, R=72, cols=['#64748b','#f59e0b','#10b981','#3b82f6'], lbls=['THINK','HUNGRY','EAT','DONE'];
+  let svg = `<circle cx="${cx}" cy="${cy}" r="36" fill="#0d1628" stroke="#1e2e4f" stroke-width="2"/><text x="${cx}" y="${cy+4}" text-anchor="middle" fill="#8b9bb8" font-size="10" font-family="monospace">ORDERED+4</text>`;
+  for (let i=0;i<5;i++){
+    const fa=((i-0.5)*2*Math.PI/5)-Math.PI/2, owner=ph.forks?ph.forks[i]:-1;
+    svg+=`<line x1="${(cx+42*Math.cos(fa)).toFixed(1)}" y1="${(cy+42*Math.sin(fa)).toFixed(1)}" x2="${(cx+60*Math.cos(fa)).toFixed(1)}" y2="${(cy+60*Math.sin(fa)).toFixed(1)}" stroke="${owner>=0?'#22d3ee':'#334155'}" stroke-width="${owner>=0?4:2.5}"/>`;
+  }
+  for (let i=0;i<5;i++){
+    const a=(i*2*Math.PI/5)-Math.PI/2, px=cx+R*Math.cos(a), py=cy+R*Math.sin(a), st=ph.phils&&ph.phils[i]?ph.phils[i].state:0, ml=ph.phils&&ph.phils[i]?ph.phils[i].meals:0;
+    svg+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="21" fill="#111c33" stroke="${cols[st]}" stroke-width="3"/><text x="${px.toFixed(1)}" y="${(py-2).toFixed(1)}" text-anchor="middle" fill="#e2e8f0" font-size="9.5" font-weight="700">P${i+1}(${ml})</text><text x="${px.toFixed(1)}" y="${(py+9).toFixed(1)}" text-anchor="middle" fill="${cols[st]}" font-size="8" font-weight="700">${lbls[st]}</text>`;
+  }
+  $('philSvg').innerHTML = svg;
+}
+
+async function poll() {
+  try {
+    const res = await fetch('/api/state', { cache: 'no-store' });
+    if (!res.ok) return;
+    const s = await res.json();
+    $('runPill').className = 'pill ' + (s.running ? 'run' : 'idle');
+    $('runText').textContent = s.running ? 'RUNNING' : 'IDLE';
+    $('elapsedBox').textContent = `${(s.elapsed_ms/1000).toFixed(2)} s | ctx_sw: ${(s.usage.nvcsw||0)+(s.usage.nivcsw||0)}`;
+    if (s.mode===1) renderPool(s.pool);
+    else if (s.mode===2) renderBench(s.bench);
+    else if (s.mode===3) renderRace(s.race);
+    else if (s.mode===4) renderPC(s.pc);
+    else if (s.mode===5) renderRW(s.rw);
+    else if (s.mode===6) renderPhil(s.phil);
+    else if (s.mode===7) renderBarrier(s.barrier);
+    else if (s.mode===8) renderCache(s.cache);
+    else if (s.mode===9) renderDeadlock(s.deadlock);
+    $('evTotal').textContent = `${s.total_events || 0} events`;
+    if (s.events && s.events.length) {
+      $('logBox').innerHTML = s.events.slice().reverse().map(e => `
+        <div class="log-line">
+          <span class="ev-t">${e.elapsed_ms.toFixed(1)}ms</span>
+          <span class="ev-tag ev-${esc(e.type)}">${esc(e.type)}</span>
+          <span style="color:#93c5fd;">${esc(e.actor)}</span>
+          <span>${esc(e.detail)}</span>
+        </div>`).join('');
+    }
+  } catch (e) {}
+}
+renderPhil({ total_meals: 0, phils: [], forks: [-1,-1,-1,-1,-1] });
+setInterval(poll, 160);
+poll();
+</script>
+</body>
+</html>
